@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>白話字變調糾錯器</title>
+<style>
+:root{--bg:#faf8f5;--card:#fff;--fg:#1f1d1a;--mut:#7a746b;--bd:#d6d0c6;--ac:#d9611c;--acbg:#fdeedf;--ok:#2f8a4f;--wa:#b7791f;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#1c1b1a;--card:#2a2826;--fg:#eeeae4;--mut:#9a948a;--bd:#46423d;--ac:#f08a3e;--acbg:#3a2a1d;--ok:#5cc27d;--wa:#e0a64a}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#1c1b1a;--card:#2a2826;--fg:#eeeae4;--mut:#9a948a;--bd:#46423d;--ac:#f08a3e;--acbg:#3a2a1d;--ok:#5cc27d;--wa:#e0a64a}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 "Charis SIL","Gentium Plus","Noto Sans","Helvetica Neue",system-ui,"PingFang TC",sans-serif}
+main{max-width:440px;margin:0 auto;padding:14px 12px 40px}
+h1{font-size:20px;margin:4px 0}
+.sub{color:var(--mut);font-size:13px;margin:0 0 12px}
+h2{font-size:13px;color:var(--mut);font-weight:500;margin:14px 0 6px}
+.row{display:flex;flex-wrap:wrap;gap:6px}
+button{font:inherit;cursor:pointer}
+.k{min-width:42px;height:40px;padding:0 8px;border-radius:9px;border:1px solid var(--bd);background:var(--card);color:var(--fg);font-size:17px}
+.k.sel{border-color:var(--ac);color:var(--ac);font-weight:700;background:var(--acbg)}
+.k:disabled{opacity:.3;cursor:default}
+.syl{flex:1;min-width:70px;padding:6px 4px;border-radius:10px;border:1px solid var(--bd);background:var(--card);color:var(--fg);text-align:center}
+.syl b{display:block;font-size:19px;font-weight:600;min-height:30px;overflow-wrap:anywhere}
+.syl small{font-size:11px;color:var(--mut)}
+.syl.act{border:2px solid var(--ac)}
+.pri{flex:1;height:46px;border-radius:12px;border:0;background:var(--ac);color:#fff;font-weight:700;font-size:17px}
+.sec{height:46px;padding:0 16px;border-radius:12px;border:1px solid var(--bd);background:var(--card);color:var(--fg)}
+.card{margin-top:14px;padding:12px;border:1px solid var(--bd);border-radius:12px;background:var(--card)}
+.big{font-size:22px;font-weight:600;overflow-wrap:anywhere}
+.big span{font-size:12px;color:var(--mut);font-weight:400;margin-right:6px}
+.ln{padding:8px 0;border-top:1px solid var(--bd);font-size:15px}
+.ok{color:var(--ok)}.wa{color:var(--wa)}
+.tag{font-size:12px;margin-left:6px}
+textarea{flex:1 1 100%;min-width:0;padding:8px 10px;border-radius:10px;border:1px solid var(--bd);background:var(--bg);color:var(--fg);font:inherit;font-size:16px;resize:vertical}
+.chg{background:var(--acbg);color:var(--ac);border-radius:4px;padding:0 2px;font-weight:600}
+.amb{background:var(--acbg);color:var(--wa);border-bottom:2px dashed var(--wa);border-radius:4px;padding:0 2px;font-weight:600;cursor:pointer}
+.unk{color:var(--mut);text-decoration:underline dotted}
+input{flex:1;min-width:0;height:42px;padding:0 10px;border-radius:10px;border:1px solid var(--bd);background:var(--bg);color:var(--fg);font:inherit;font-size:16px}
+</style>
+</head>
+<body>
+<main>
+<h1>白話字變調糾錯器</h1>
+<p class="sub">末音節視為正確。其餘音節請輸入變調後的調，按「改正」還原為本調。</p>
+<div class="card" style="margin:0 0 12px"><div class="row"><textarea id="inp" rows="4" placeholder="貼上白話字，例：tâi-oân、hó-tē-á" autocapitalize="off" autocomplete="off" spellcheck="false"></textarea><button class="pri" id="para" style="height:42px">改正全文</button><button class="sec" id="load" style="height:42px">載入鍵盤</button></div><div id="msg" style="font-size:13px;margin-top:6px"></div><div id="pres"></div></div>
+<div class="row" id="cnt"></div>
+<h2>音節（點選要輸入的音節）</h2>
+<div class="row" id="tabs"></div>
+<div id="kb"></div>
+<div class="row" style="margin-top:14px"><button class="pri" id="fix">改正</button><button class="sec" id="clr">清除</button></div>
+<div id="res"></div>
+</main>
+<script>
+const IN=['Ø','p','ph','b','m','t','th','n','l','k','kh','g','ng','h','ch','chh','s','j'];
+const O='o\u0358';
+const VO=['a','e','i','o',O,'u','ai','au','ia','io','iu','oa','oe','ui','iau','oai'];
+const EN=['Ø','ⁿ','m','n','ng','p','t','k','h'];
+const TO=[1,2,3,4,5,7,8];
+const AL={a:'Ø ⁿ m n ng p t k h',e:'Ø ⁿ ng k h',i:'Ø ⁿ m n ng p t k h',o:'Ø m ng p k h',[O]:'Ø ⁿ h',u:'Ø n t h',ai:'Ø ⁿ h',au:'Ø h',ia:'Ø ⁿ n ng t k h',io:'Ø ⁿ ng k h',iu:'Ø ⁿ h',oa:'Ø ⁿ n t h',oe:'Ø ⁿ h',ui:'Ø ⁿ h',iau:'Ø ⁿ h',oai:'Ø ⁿ h'};
+const MK={2:'\u0301',3:'\u0300',5:'\u0302',7:'\u0304',8:'\u030d'};
+const STOP=['p','t','k'];
+const blank=()=>({i:null,v:null,e:null,t:null,pick:1});
+let N=2,A=0,S=[blank(),blank(),blank(),blank()],fixed=false;
+const $=id=>document.getElementById(id);
+const done=s=>s.i!==null&&s.v!==null&&s.e!==null&&s.t!==null;
+
+function txt(s,t=s.t){
+  const ini=s.i&&s.i!=='Ø'?s.i:'';
+  if(!s.v)return ini||'·';
+  const k=s.v.match(/[^\u0358]\u0358?/gu);
+  let p=k.indexOf('a');
+  if(p<0){
+    if(s.v==='oe')p=1;
+    else{p=k.findIndex(x=>x[0]==='o');if(p<0)p=k.indexOf('e');if(p<0)p=(s.v==='ui'||s.v==='iu')?1:0}
+  }
+  if(t&&MK[t])k[p]+=MK[t];
+  const en=s.e&&s.e!=='Ø'?s.e:'';
+  return (ini+k.join('')+en).normalize('NFC');
+}
+function okE(s,e){
+  if(s.v&&!AL[s.v].split(' ').includes(e))return false;
+  if(e==='ⁿ'&&['b','l','g','m','n','ng'].includes(s.i))return false;
+  return true;
+}
+function okV(s,v){return s.e===null||AL[v].split(' ').includes(s.e)}
+function okT(s,t,fin){
+  const e=s.e;
+  if(e===null)return true;
+  if(STOP.includes(e))return t===4||t===8;
+  if(e==='h')return fin?(t===4||t===8):[2,3,4,8].includes(t);
+  return [1,2,3,5,7].includes(t);
+}
+function fixup(){
+  S.forEach((s,i)=>{
+    if(s.e!==null&&!okE(s,s.e))s.e=null;
+    if(s.t!==null&&!okT(s,s.t,i===N-1))s.t=null;
+  });
+}
+function conv(s){
+  const e=s.e,t=s.t;
+  if(STOP.includes(e)){
+    if(t===8)return{b:4,st:'ok'};
+    if(t===4)return{b:8,st:'ok'};
+  }else if(e==='h'){
+    if(t===2)return{b:4,st:'ok'};
+    if(t===3)return{b:8,st:'ok'};
+    return{b:t,st:'keep',n:'已是入聲本調，保留'};
+  }else{
+    if(t===1)return{b:2,st:'ok'};
+    if(t===2)return{b:3,st:'ok'};
+    if(t===3)return{b:7,st:'ok'};
+    if(t===7)return{b:s.pick,st:'amb'};
+    if(t===5)return{b:5,st:'keep',n:'5 聲不是變調結果，保留'};
+  }
+  return{b:t,st:'keep',n:'無法判斷，保留'};
+}
+function render(){
+  $('cnt').innerHTML=[2,3,4].map(n=>`<button class="k${n===N?' sel':''}" data-n="${n}">${n} 音節</button>`).join('');
+  $('tabs').innerHTML=S.slice(0,N).map((s,i)=>`<button class="syl${i===A?' act':''}" data-a="${i}"><b>${txt(s)}</b><small>${i===N-1?'末音節（正確）':'音節 '+(i+1)+'（變調）'}</small></button>`).join('');
+  const s=S[A],fin=A===N-1;
+  const grp=(title,k,arr,dis,lab)=>`<h2>${title}</h2><div class="row">${arr.map(x=>`<button class="k${s[k]===x?' sel':''}" data-k="${k}" data-v="${x}"${dis(x)?' disabled':''}>${lab?lab(x):x}</button>`).join('')}</div>`;
+  $('kb').innerHTML=
+    grp('子音','i',IN,()=>false)+
+    grp('母音','v',VO,x=>!okV(s,x))+
+    grp('鼻母音 / 斷音','e',EN,x=>!okE(s,x),x=>x==='Ø'?'Ø':x)+
+    grp(fin?'聲調（末音節：本調）':'聲調（此音節：變調後的調）','t',TO,x=>!okT(s,x,fin));
+  renderRes();
+}
+function renderRes(){
+  const box=$('res');
+  if(!fixed){box.innerHTML='';return}
+  const typed=[],base=[],lines=[];
+  S.slice(0,N).forEach((s,i)=>{
+    if(i===N-1){typed.push(txt(s));base.push(txt(s));return}
+    const c=conv(s);
+    typed.push(txt(s));base.push(txt(s,c.b));
+    let msg,cls='ok';
+    if(c.st==='ok')msg=`變調 ${s.t} ← 本調 ${c.b}`;
+    else if(c.st==='amb'){msg=`變調 7 ← 本調 1 或 5，請選擇：`;cls='wa'}
+    else{msg=c.n;cls='wa'}
+    const chips=c.st==='amb'?[1,5].map(v=>`<button class="k${s.pick===v?' sel':''}" style="height:30px;min-width:34px;font-size:14px" data-p="${i}" data-v="${v}">${v}</button>`).join(' '):'';
+    lines.push(`<div class="ln"><b>音節 ${i+1}</b>　${txt(s)} → <b>${txt(s,c.b)}</b><div class="${cls}" style="font-size:13px">${msg} ${chips}</div></div>`);
+  });
+  lines.push(`<div class="ln"><b>音節 ${N}</b>　${txt(S[N-1])}　<span class="tag ok">末音節，不變</span></div>`);
+  box.innerHTML=`<div class="card"><div class="big"><span>輸入</span>${typed.join('-')}</div><div class="big ok" style="margin-top:6px"><span>本調</span>${base.join('-')}</div>${lines.join('')}</div>`;
+}
+$('cnt').onclick=e=>{const n=e.target.dataset.n;if(!n)return;N=+n;A=Math.min(A,N-1);fixed=false;fixup();render()};
+$('tabs').onclick=e=>{const b=e.target.closest('[data-a]');if(!b)return;A=+b.dataset.a;render()};
+$('kb').onclick=e=>{
+  const b=e.target.closest('[data-k]');if(!b||b.disabled)return;
+  const k=b.dataset.k,v=k==='t'?+b.dataset.v:b.dataset.v,s=S[A];
+  const was=done(s);
+  s[k]=s[k]===v?null:v;
+  fixed=false;fixup();
+  if(k==='t'&&!was&&done(s)&&A<N-1)A++;
+  render();
+};
+$('res').onclick=e=>{const b=e.target.closest('[data-p]');if(!b)return;S[+b.dataset.p].pick=+b.dataset.v;renderRes()};
+$('fix').onclick=()=>{
+  const bad=S.slice(0,N).findIndex(s=>!done(s));
+  if(bad>=0){fixed=false;A=bad;render();$('res').innerHTML=`<div class="card wa">音節 ${bad+1} 尚未輸入完整（子音、母音、韻尾、聲調都要選）。</div>`;return}
+  fixed=true;renderRes();
+};
+$('clr').onclick=()=>{S=[blank(),blank(),blank(),blank()];A=0;fixed=false;render()};
+function parseSyl(raw){
+  let w=raw.toLowerCase().normalize('NFD'),t=null;
+  const dm=w.match(/[1-8]$/);
+  if(dm){t=+dm[0];w=w.slice(0,-1)}
+  const R={'\u0301':2,'\u0300':3,'\u0302':5,'\u0304':7,'\u030d':8};
+  w=w.replace(/[\u0300\u0301\u0302\u0304\u030d]/g,m=>{t=R[m];return ''});
+  w=w.replace(/o[·•\u0307]/g,O).replace(/oo/g,O).replace(/nn$/,'ⁿ');
+  const ini=IN.filter(x=>x!=='Ø').sort((a,b)=>b.length-a.length).find(x=>w.startsWith(x)&&VO.some(v=>w.slice(x.length).startsWith(v)))||'Ø';
+  const rest=w.slice(ini==='Ø'?0:ini.length);
+  const vs=VO.filter(v=>rest.startsWith(v)&&EN.includes(rest.slice(v.length)||'Ø')).sort((a,b)=>b.length-a.length)[0];
+  if(!vs)return null;
+  const e=rest.slice(vs.length)||'Ø';
+  if(t===null)t=['p','t','k','h'].includes(e)?4:1;
+  return{i:ini,v:vs,e,t,pick:1};
+}
+function loadWord(){
+  const parts=$('inp').value.trim().split(/[-\s\u2010-\u2015]+/).filter(Boolean);
+  const msg=$('msg');
+  const err=m=>{msg.textContent=m;msg.className='wa'};
+  if(parts.length<2||parts.length>4)return err('「載入鍵盤」只適用單一個 2 到 4 音節的詞；整句或整段文字請按「改正全文」。');
+  const L=parts.map(parseSyl);
+  const bad=L.findIndex(x=>!x);
+  if(bad>=0)return err(`第 ${bad+1} 個音節「${parts[bad]}」無法辨識。`);
+  const bc=L.findIndex((s,i)=>!okE(s,s.e)||!okT(s,s.t,i===L.length-1));
+  if(bc>=0)return err(`第 ${bc+1} 個音節「${parts[bc]}」的子音、母音、韻尾或聲調組合不在鍵盤規則內。`);
+  N=L.length;A=0;fixed=false;
+  S=[...L,...Array.from({length:4-N},blank)];
+  msg.textContent=`已載入 ${N} 音節，請確認後按「改正」。`;msg.className='ok';
+  render();
+}
+$('load').onclick=loadWord;
+let P=[],PL='';
+const TOK=/[\p{L}\p{M}\u00b7\u2022]+(?:[-\u2010][\p{L}\p{M}\u00b7\u2022]+)*/gu;
+const esc=x=>x.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const cap=(raw,t)=>raw.charAt(0)!==raw.charAt(0).toLowerCase()?t.charAt(0).toUpperCase()+t.slice(1):t;
+function buildPara(){
+  const src=$('inp').value;
+  P=[];let last=0,m;TOK.lastIndex=0;
+  while((m=TOK.exec(src))){
+    if(m.index>last)P.push({x:src.slice(last,m.index)});
+    const parts=m[0].split(/[-\u2010]/);
+    if(parts.length<2)P.push({x:m[0]});
+    else{
+      const L=parts.map(parseSyl);
+      if(L.some(s=>!s))P.push({u:m[0]});else P.push({parts,L});
+    }
+    last=m.index+m[0].length;
+  }
+  if(last<src.length)P.push({x:src.slice(last)});
+  $('msg').textContent='';
+  renderPara();
+}
+function renderPara(){
+  let words=0,chg=0,unk=0,amb=0,h='';PL='';
+  P.forEach((p,pi)=>{
+    if(p.x!==undefined){h+=esc(p.x);PL+=p.x;return}
+    if(p.u!==undefined){unk++;h+=`<span class="unk">${esc(p.u)}</span>`;PL+=p.u;return}
+    words++;
+    const hs=[],ps=[];
+    p.parts.forEach((raw,i)=>{
+      if(i===p.parts.length-1){hs.push(esc(raw));ps.push(raw);return}
+      const s=p.L[i],c=conv(s);
+      if(c.st==='keep'){hs.push(esc(raw));ps.push(raw);return}
+      chg++;
+      const t=cap(raw,txt(s,c.b));
+      ps.push(t);
+      if(c.st==='amb'){amb++;hs.push(`<span class="amb" data-w="${pi}" data-i="${i}" title="變調 7 ← 本調 1 或 5，點一下切換">${esc(t)}</span>`)}
+      else hs.push(`<span class="chg" title="變調 ${s.t} ← 本調 ${c.b}">${esc(t)}</span>`);
+    });
+    h+=hs.join('-');PL+=ps.join('-');
+  });
+  let sm=`共 ${words} 個多音節詞，改正 ${chg} 個音節。橘色為已還原的本調。`;
+  if(amb)sm+=`其中 ${amb} 個變調 7 無法判斷本調（虛線標示），預設為 1 聲，點一下可在 1 與 5 之間切換。`;
+  if(unk)sm+=`另有 ${unk} 個詞無法辨識（灰色虛線），保持原樣。`;
+  $('pres').innerHTML=`<div class="card" style="margin-top:10px"><div style="white-space:pre-wrap;line-height:2;font-size:18px">${h}</div><div style="font-size:13px;margin-top:8px;color:var(--mut)">${sm}</div><div class="row" style="margin-top:8px"><button class="sec" id="cp">複製改正後文字</button></div></div>`;
+}
+$('para').onclick=buildPara;
+$('pres').onclick=async e=>{
+  const a=e.target.closest('[data-w]');
+  if(a){const s=P[+a.dataset.w].L[+a.dataset.i];s.pick=s.pick===1?5:1;renderPara();return}
+  if(e.target.id==='cp'){
+    const msg=$('msg');
+    try{await navigator.clipboard.writeText(PL);msg.textContent='已複製。';msg.className='ok'}
+    catch(x){msg.textContent='無法自動複製，請長按上方文字手動選取。';msg.className='wa'}
+  }
+};
+$('inp').onkeydown=e=>{if(e.key==='Enter')loadWord()};
+render();
+</script>
+</body>
+</html>
